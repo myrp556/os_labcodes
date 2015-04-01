@@ -1,0 +1,71 @@
+练习1：
+1
+操作系统的镜像文件 ucore.img
+根据它的生成代码，可以发现它需要bootblock, kernel
+
+bootblock:
+ bin/bootblock生成bootblock的代码中可以看到，生成bootblock需要bootasm.o, bootmain.o, sign
+	相应的obj/boot/bootasm.o, obj/boot/bootmain.o生成代码中
+	bootasn.o需要bootasm.S 命令为gcc -Iboot/ -fno-builtin -Wall -ggdb -m32 -gstabs -nostdinc -fno-stack-protector -Ilibs/ -Os -nostdinc -c boot/bootasm.S -o obj/boot/bootasm.o, 可以看到中间需要bootasm.S	
+	根据 gcc -Iboot/ -fno-buiiltin -Wall -ggdb -m32 -gstabs -nostdinc -fno-stack-protector -Ilibs/ -Os -nostdinc -c boot/bootmain.c -o obj/boot/bootmain.o 中也可以知道生成bootmain.o需要bootmain.c
+	生成sign的makefile文件中 可以知道需要文件tools/sign.c
+
+ 第一步先生成文件bootblock.o ld -m elf_i386 -nostdinc -N -e start -Ttext 0x7c00 obj/boot/bootasm.o obj/boot/bootmain.o -o obj/bootblock.o
+ 只复制bootblock.o到bootblock.out,使用sign将bootblock.out生成为bootblock
+
+kernel:
+ 从生成kernal的代码中知道需要文件kernel.ld, init.o, readline.o, stdio.o, kdebug.o, kmonitor.o, panic.o, clock.o, consloe.o, intr.o, picirq.o, trap.o, trapentry.o, vectors.o, pmm.o, proifmt.o, string.o
+ 
+根据makefile中的代码，分别会生成10000个文件，每个文件默认512字节，用0填充。
+之后把bootblock写到第一个块中，再从第二个块开始写kernel。
+
+2
+硬盘主引导扇区大小是512字节，最后2个字节内容一定是0x55AA
+
+练习2：
+1
+编辑makefile文件：
+	debug:	$(UCOREIMG)
+			$(V)$(TERMINAL) -e "$(QEMU) -S -s -d inasm -D $(BINDIR)/q.log -parallel stdio -hda $< -serial null"
+			$(V)sleep 2
+			$(V)$(TERMINAL) -e "gdb -q -tui -x tools/gdbinit"
+为qemu添加参数 -d n_asm -D a.log参数，将汇编指令保存在a.log中，同时删除tools/gdbinit中的continue。
+
+2
+在tools/gdbinit中添加b *0x7c00，表示在0x7c00处设置断点。
+
+3
+同上在tools/gdbinit中添加断点b *7c00	c	x /10i $pc
+根据保存在log中的指令，bootasm.S botblock.asm代码是一致的。
+
+练习3
+
+开始的时候cs段寄存器%cs=0, 指令寄存器$pc=0x7c00.
+之后把所有的寄存器和flag全部置为0.
+检查硬件设备，比如内存，键盘等。把键盘上的A20线置为高电位，32条地址线可用，内存可以访问。
+
+初始化GDT表，把它的描述符存储在引导区中并载入。
+将cr0寄存器PE置为1，表示开启保护模式。
+为了跳转指令更新cs基地址，设置段寄存器，并建立起堆栈。
+到此转入保护模式完成了，之后进入boot主函数。
+
+练习4
+bootmain函数中首先使用readseg读取ELF的头部，0位置，之后判断ELF是否是合法的文件，否则则处理。
+之后根据ELF文件中的地址，分别把所有的内容存储到内存中。
+
+练习5
+寄存器：
+	ebp: 堆栈地址，用于堆栈寻址。
+	ebp+4: eip地址
+	ebp+8: 根据堆栈调用，应该是传入参数
+	
+	输出中堆栈底层是：
+	ebp: 0x00007bf8 eip:0x00007d68 args: 0x00000000 0x00000000 0x00000000 0x00007c4f
+	bootloader从0x7c00地址开始，call bootmain后进入bootmain函数，因此bootmain函数中ebp就是0x7bf8
+	
+练习6
+1.
+	中断向量表一个表项站8字节，2-3字节是段选择子，0-1字节和6-7字节一起构成中断处理入口地址。
+
+
+
