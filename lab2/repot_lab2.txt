@@ -1,0 +1,30 @@
+lab2
+练习1：
+	default_init:
+		需要初始化free_list并且设置nr_free为0.
+	default_init_memmap：
+		根据调用过程，kern_init->pmm_init->page_init->init_memmap->pmm_manager->init_memmap
+		这里需要使用参数addr_base, page_number初始化一个free block，首先就是初始化在空block中的每一页的空间，包括flag属性应该是PG_property，表示这页是有效的，之后判断如果这页是空并且不是这个空block的第一页，property置为0，如果是第一页则把property置为block的总数。ref置为0,。page_link链接这个页到free_list，最后就是把nr_free+n，块的总数。
+	default_alloc_pages:
+		首先找到一个空闲的block，之后返回这个block的地址。
+		因此首先就用list_entry_t le=&free遍历来查找，按照之前的处理，如果propery>=n就表示这是一个可用的block，之后设置flag，PG_reserved=1, PG_property=0，并且把关联的页从free_list中取消。如果Property>n就需要重新计算剩余的block。
+		之后重新计算nr_free表示所有可用block的数量。返回这个可用block的地址。
+		如果没有找到就返回NULL
+	default_free_pages:
+		重新把页链接到free_list。根据基地址base addr，从free_list中找到对应的地址，之后插入到list中，重新设置ref, flag标签，把地位和高位的地址块合并起来，设置base->property=0。最后把nr_free+n。
+
+	这里应该可以通过改变查找block来提高速度，比如判断一下要找的block是地位还是高位，从不同的两端开始查找而不只是固定从一端开始。
+	
+练习2
+	get_pte
+	首先取得对应页的目录入口，检查是否为空，是的话开始处理。检查是否需要create，不需要return NULL。之后调用set_page_ref，设置页表的reference。之后通过page2pa获得页地址，清除页中的内容设置页目录的权限，最后返回页表入口。
+	
+	1.
+		页表项和页目录表项大小为32位。
+		从mmu.h中的定义可以知道，右起第一位表示该表项对应的页是否有效存在；右起第二位表示页内容是否可写；第三为表示用户态的软件是否能读取页的内容；第四位表示方式是不是写直达；第五位表示映射的页面是否被装入缓存，便于快速读写；第六位表示映射的页面当前的访问情况；第七位代表该页是否被修改，便于实现虚存中外表内存的读取，移动问题；第八位和第九位为0；第10、11、12位是预留给软件；剩余20位表示被映射的页面的基地址。
+	2.
+		出现页访问异常后，硬件需要把异常的线性地址存储在CR2寄存器中，给出错误代码以及异常类型。之后按着异常处理保存现场，将出错的相关参数入栈，把异常中断信号0xe对应的中断服务例程加载到CS和EIP寄存器，之后移交给操作系统开始处理异常。最后再根据保存的现场恢复程序。
+练习3
+	page_ref_dec：
+		由给定参数，判断*ptep&PTE_P是否为0，即检查页表入口，是的话找到对应的页，释放对应的页的referemce并且当这页的referece到0时也调用free_page释放这个页。最后清除入口ptep=0，调用tlb_invalidate()
+	
